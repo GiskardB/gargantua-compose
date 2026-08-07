@@ -1,0 +1,126 @@
+# Gargantua — local vertical slice.
+#
+# Brings up the agent-creation flow end to end WITHOUT Kubernetes:
+#
+#   browser ─▶ studio (nginx SPA + /api proxy)
+#                 └─▶ studio-backend (BFF, builds gargantua.ai/v1 manifests)
+#                        └─▶ control-plane (Registry + Catalog)
+#                               ├─▶ postgres  (control-plane + studio state)
+#                               └─▶ minio     (bundle manifest blobs)
+#
+# Runtime / Mongo / Redis are NOT part of this slice: creating an agent only needs
+# Studio → backend → Control Plane. Running an agent (the Runtime) comes later.
+#
+# Build contexts point at the sibling source repos, so check them out next to this
+# one (see README). agent-core resolves from Maven Central, so no Runtime checkout
+# is needed to build the JVM services.
+
+name: gargantua
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gargantua}
+      POSTGRES_USER: ${POSTGRES_USER:-gargantua}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gargantua}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gargantua} -d ${POSTGRES_DB:-gargantua}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Not published: kept on the internal network to avoid clashing with a host Postgres.
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - miniodata:/data
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"     # S3 API
+      - "${MINIO_CONSOLE_PORT:-9001}:9001" # web console
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  control-plane:
+    build:
+      context: ../gargantua-control-plane
+    environment:
+      # The S3BlobStore auto-creates the bucket on first write, so no init job is needed.
+      SPRING_PROFILES_ACTIVE: postgres,minio
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-gargantua}
+      POSTGRES_USER: ${POSTGRES_USER:-gargantua}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gargantua}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-gargantua-bundles}
+    ports:
+      - "${CONTROL_PLANE_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  studio-backend:
+    build:
+      context: ../gargantua-studio-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-gargantua}
+      POSTGRES_USER: ${POSTGRES_USER:-gargantua}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gargantua}
+      GARGANTUA_CONTROL_PLANE_BASE_URL: http://control-plane:8080
+    ports:
+      - "${STUDIO_BACKEND_PORT:-8090}:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      control-plane:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8090/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  studio:
+    build:
+      context: ../gargantua-studio
+      args:
+        # Empty = same-origin: the SPA calls /api and /actuator, nginx proxies them to
+        # studio-backend. Host-agnostic, so the site works on localhost or a LAN IP.
+        VITE_STUDIO_API: ""
+    ports:
+      - "${STUDIO_PORT:-8081}:80"
+    depends_on:
+      studio-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  miniodata:
