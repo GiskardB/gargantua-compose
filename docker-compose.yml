@@ -42,8 +42,9 @@ services:
     volumes:
       - miniodata:/data
     ports:
-      - "${MINIO_API_PORT:-9000}:9000"     # S3 API
-      - "${MINIO_CONSOLE_PORT:-9001}:9001" # web console
+      # Published high to avoid clashing with Cave's own minio on 9000/9001.
+      - "${MINIO_API_PORT:-19000}:9000"     # S3 API
+      - "${MINIO_CONSOLE_PORT:-19001}:9001" # web console
     healthcheck:
       test: ["CMD-SHELL", "mc ready local || exit 1"]
       interval: 5s
@@ -66,7 +67,8 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-gargantua-bundles}
     ports:
-      - "${CONTROL_PLANE_PORT:-8080}:8080"
+      # Published high to avoid clashing with Cave's service on 8080.
+      - "${CONTROL_PLANE_PORT:-18080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,7 +92,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gargantua}
       GARGANTUA_CONTROL_PLANE_BASE_URL: http://control-plane:8080
     ports:
-      - "${STUDIO_BACKEND_PORT:-8090}:8090"
+      - "${STUDIO_BACKEND_PORT:-18090}:8090"
     depends_on:
       postgres:
         condition: service_healthy
@@ -111,7 +113,7 @@ services:
         # studio-backend. Host-agnostic, so the site works on localhost or a LAN IP.
         VITE_STUDIO_API: ""
     ports:
-      - "${STUDIO_PORT:-8081}:80"
+      - "${STUDIO_PORT:-18081}:80"
     depends_on:
       studio-backend:
         condition: service_healthy
