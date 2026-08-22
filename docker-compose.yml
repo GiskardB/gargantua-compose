@@ -8,8 +8,16 @@
 #                               ├─▶ postgres  (control-plane + studio state)
 #                               └─▶ minio     (bundle manifest blobs)
 #
-# Runtime / Mongo / Redis are NOT part of this slice: creating an agent only needs
-# Studio → backend → Control Plane. Running an agent (the Runtime) comes later.
+# The core 5 services above are the "does Studio emit something compatible?" slice.
+# Optionally, the `agent-runtime` profile adds a second loop — actually RUNNING an
+# agent bundle, end to end, with a real (local, no external API key) LLM:
+#
+#   runtime (agent-runtime image, GARGANTUA_BUNDLE=./examples/hello-agent)
+#      └─▶ ollama (local model, OpenAI-compatible endpoint — no external API key)
+#
+# Bring it up with:  docker compose --profile agent-runtime up -d --build --wait
+# Mongo/Redis are still not part of this: the runtime uses the `embedded` Spring
+# profile (in-memory state), matching "try it in 60 seconds" from getting-started.md.
 #
 # Build contexts point at the sibling source repos, so check them out next to this one
 # (see README). The JVM images build the shared agent-core FROM SOURCE (via the
@@ -131,6 +139,65 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── optional: `--profile agent-runtime` ──────────────────────────────────────
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["agent-runtime"]
+    volumes:
+      - ollamadata:/root/.ollama
+    ports:
+      - "${OLLAMA_PORT:-19434}:11434"
+    healthcheck:
+      # The ollama image ships neither wget nor curl — use its own CLI, which hits the
+      # local API. `ollama list` succeeds once the server is accepting requests.
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  # One-shot: pulls the demo model, then exits. `runtime` waits for it to succeed.
+  ollama-pull:
+    image: ollama/ollama:latest
+    profiles: ["agent-runtime"]
+    entrypoint: ["sh", "-c", "ollama pull ${OLLAMA_MODEL:-qwen2.5:0.5b}"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  runtime:
+    profiles: ["agent-runtime"]
+    build:
+      # Build context is this repo (bakes ./examples/hello-agent into the image at build
+      # time — a bind mount can't work when the daemon is remote). The Runtime source is
+      # the `runtime_src` named context.
+      context: .
+      dockerfile: runtime.Dockerfile
+      additional_contexts:
+        runtime_src: ../gargantua
+    environment:
+      SPRING_PROFILES_ACTIVE: embedded
+      ROUTING_STRATEGY: semantic   # ONNX embeddings only — no LLM call needed to route
+      LLM_PRIMARY_PROVIDER: openai # Ollama exposes an OpenAI-compatible /v1 endpoint
+      LLM_PRIMARY_MODEL: ${OLLAMA_MODEL:-qwen2.5:0.5b}
+      LLM_PRIMARY_ENDPOINT: http://ollama:11434/v1
+      LLM_PRIMARY_API_KEY: ollama # unused by Ollama, but the client requires a non-empty value
+    ports:
+      - "${RUNTIME_PORT:-18100}:8080"
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
 volumes:
   pgdata:
   miniodata:
+  ollamadata:

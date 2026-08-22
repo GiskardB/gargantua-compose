@@ -1,0 +1,20 @@
+apiVersion: gargantua.ai/v1
+kind: Agent
+metadata:
+  name: hello-agent
+  version: 1.0.0
+  description: Minimal test agent for the vertical-slice compose — proves a bundle
+    actually boots on the Runtime and answers through a real (local) LLM.
+  owner: platform-team
+spec:
+  capabilities:
+    - name: greet
+      description: Greets the user and states what the agent can do
+      version: 1.0.0
+      implementedBy: greeter-skill
+      tags: [demo]
+  # Model is deliberately NOT pinned here: the process environment (LLM_PRIMARY_*)
+  # overrides whatever the bundle declares, so the compose can point this bundle at
+  # whichever local Ollama model it has pulled without editing the manifest.
+  memoryLayers: [WORKING]
+  defaultSkill: greeter-skill
