@@ -17,9 +17,11 @@ browser ─▶ studio            nginx: serves the SPA, proxies /api same-origin
 > next. Kubernetes and the Operator stay Phase 5; they are never required to try the
 > platform.
 
-> **Status: verified against a live Docker daemon (2026-08)** — all 5 services build and
-> report healthy, and `smoke/smoke.sh` passes end to end (build → publish → catalog
-> round-trip, confirmed against the real Control Plane response).
+> **Status: verified against a live Docker daemon (2026-08)** — all 5 core services build
+> and report healthy, and `smoke/smoke.sh` passes end to end (build → publish → catalog
+> round-trip, confirmed against the real Control Plane response). The optional
+> `agent-runtime` profile is verified too: a bundle boots, its skill registers, and
+> `POST /api/agent/chat` returns a real LLM-generated reply (see below).
 
 ## Prerequisites
 
@@ -89,6 +91,37 @@ the Control Plane directly. Green means Studio's output is compatible with the p
 You can also do it by hand in the UI: open the **Agent Designer**, keep the sample agent,
 hit **Publish**, then open the **Capability Designer** / **Workload Designer** — they flip
 from "sample data" to **live** and list what you just published.
+
+## Actually running an agent (optional) — `agent-runtime` profile
+
+The five services above only cover *creating* an agent. To also *run* one end to end —
+with a real LLM but **no external API key** (a local Ollama) — bring up the opt-in profile:
+
+```bash
+DOCKER_BUILDKIT=1 docker compose --profile agent-runtime up -d --build --wait
+```
+
+It adds `ollama` (local OpenAI-compatible model), a one-shot `ollama-pull`, and `runtime`
+(the generic Gargantua Runtime image with a demo bundle baked in — `examples/hello-agent`,
+a manifest + one `greeter-skill`). The runtime uses the `embedded` Spring profile
+(in-memory, no Mongo/Redis) and `semantic` ONNX routing (no LLM call needed just to route).
+
+Talk to the agent:
+
+```bash
+curl -X POST http://localhost:18100/api/agent/chat \
+  -H 'Content-Type: application/json' -H 'X-User-Id: me' -H 'X-Session-Id: s1' \
+  -d '{"message":"Hi, who are you?"}'
+# → {"text":"I'm ... running on the Gargantua Runtime ...","skillUsed":"greeter-skill",
+#    "routingMethod":"SEMANTIC","totalTokens":48,"dryRun":false}
+```
+
+List the loaded skills: `curl http://localhost:18100/api/admin/skills`.
+
+> The bundle is **baked into the image at build time**, not bind-mounted — a bind mount
+> of a workspace path can't work when the Docker daemon is remote (it resolves on the
+> daemon's host). To change the bundle, edit `examples/hello-agent/` and rebuild `runtime`.
+> First inference on CPU can take a few seconds; the tiny default model keeps it snappy.
 
 ## Tear down
 
