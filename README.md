@@ -17,9 +17,16 @@ browser ─▶ studio            nginx: serves the SPA, proxies /api same-origin
 > next. Kubernetes and the Operator stay Phase 5; they are never required to try the
 > platform.
 
+> **Status: verified against a live Docker daemon (2026-08)** — all 5 services build and
+> report healthy, and `smoke/smoke.sh` passes end to end (build → publish → catalog
+> round-trip, confirmed against the real Control Plane response).
+
 ## Prerequisites
 
-- Docker + Docker Compose v2 (`docker compose`).
+- Docker + Docker Compose v2 (`docker compose`) **with BuildKit**. The JVM images use a
+  named build context (`additional_contexts`), which the classic (non-BuildKit) builder
+  rejects with `the classic builder doesn't support additional contexts`. If your Docker
+  doesn't default to BuildKit, prefix build/up commands with `DOCKER_BUILDKIT=1`.
 - The sibling source repos checked out **next to this one**, because the JVM/SPA images
   build from source:
 
@@ -41,7 +48,7 @@ browser ─▶ studio            nginx: serves the SPA, proxies /api same-origin
 
 ```bash
 cp .env.example .env            # optional — defaults work as-is
-docker compose up -d --build --wait   # --wait blocks until healthchecks pass
+DOCKER_BUILDKIT=1 docker compose up -d --build --wait   # --wait blocks until healthchecks pass
 ```
 
 **Windows:** just double-click **`start.bat`** (creates `.env` if missing, builds and
@@ -58,6 +65,13 @@ Then open the Studio:
 > **Ports are in a high range on purpose** so they never clash with Cave's own services
 > (forgejo 3000, postgres 5432, redis 6379, cave-publish 7443, 8080, minio 9000/9001).
 > Change any of them in `.env`.
+>
+> **Published ports bind on the Docker *host***, which is not always `localhost` from
+> where you're running commands — e.g. a remote daemon, Docker Desktop's VM, or (in Cave)
+> a `DOCKER_HOST=tcp://...` setup where the CLI's shell and the daemon are different
+> machines. If `curl localhost:18080` refuses to connect but the containers report
+> healthy (`docker compose ps`), try the actual Docker host address instead (in Cave,
+> `<CAVE_HOST>`).
 
 The SPA talks to the backend **same-origin** through nginx, so the UI works whether you
 reach it on `localhost` or a LAN IP — no rebuild per host, no CORS.
