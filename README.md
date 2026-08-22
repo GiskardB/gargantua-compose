@@ -26,13 +26,16 @@ browser ─▶ studio            nginx: serves the SPA, proxies /api same-origin
   ```
   workspace/
     gargantua-compose/          ← you are here
+    gargantua/                  ← Runtime repo — REQUIRED: agent-core is built from it
     gargantua-control-plane/
     gargantua-studio-backend/
     gargantua-studio/
   ```
 
-  `agent-core` resolves from Maven Central, so you do **not** need the `gargantua`
-  Runtime repo checked out to build these services.
+  The JVM images build the shared **`agent-core` from source** (via the `runtime_src`
+  named build context = `../gargantua`), so **no Maven Central release is needed** — but
+  the `gargantua` Runtime repo **must** be checked out as a sibling. This is what lets the
+  stack build while the model is on a `-SNAPSHOT`.
 
 ## Run it
 

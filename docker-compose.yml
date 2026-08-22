@@ -11,9 +11,10 @@
 # Runtime / Mongo / Redis are NOT part of this slice: creating an agent only needs
 # Studio → backend → Control Plane. Running an agent (the Runtime) comes later.
 #
-# Build contexts point at the sibling source repos, so check them out next to this
-# one (see README). agent-core resolves from Maven Central, so no Runtime checkout
-# is needed to build the JVM services.
+# Build contexts point at the sibling source repos, so check them out next to this one
+# (see README). The JVM images build the shared agent-core FROM SOURCE (via the
+# `runtime_src` named build context = ../gargantua), so no Maven Central release of
+# agent-core is needed — but the `gargantua` Runtime repo MUST be checked out as a sibling.
 
 name: gargantua
 
@@ -54,6 +55,9 @@ services:
   control-plane:
     build:
       context: ../gargantua-control-plane
+      additional_contexts:
+        # agent-core is built from source (no Maven Central release needed).
+        runtime_src: ../gargantua
     environment:
       # The S3BlobStore auto-creates the bucket on first write, so no init job is needed.
       SPRING_PROFILES_ACTIVE: postgres,minio
@@ -84,6 +88,8 @@ services:
   studio-backend:
     build:
       context: ../gargantua-studio-backend
+      additional_contexts:
+        runtime_src: ../gargantua
     environment:
       SPRING_PROFILES_ACTIVE: postgres
       POSTGRES_HOST: postgres
