@@ -95,33 +95,58 @@ from "sample data" to **live** and list what you just published.
 ## Actually running an agent (optional) — `agent-runtime` profile
 
 The five services above only cover *creating* an agent. To also *run* one end to end —
-with a real LLM but **no external API key** (a local Ollama) — bring up the opt-in profile:
+with a real LLM but **no external API key** (a local Ollama) — bring up the opt-in profile.
+Unlike before, the runtime no longer bakes in a bundle: it **fetches the published bundle
+from the Control Plane** at startup (`GARGANTUA_BUNDLE_URL`), so it runs whatever you
+publish — from the Studio or the seed script below.
+
+**Path A — the default hello-agent, from the CLI:**
 
 ```bash
-DOCKER_BUILDKIT=1 docker compose --profile agent-runtime up -d --build --wait
-```
+# 1) core stack up (if not already)
+DOCKER_BUILDKIT=1 docker compose up -d --build --wait
+# 2) publish the demo bundle to the Control Plane (manifest + greeter-skill SKILL.md)
+./seed/seed-hello-agent.sh
+# 3) bring up ollama + the runtime (fetches hello-agent@1.0.0 from the Control Plane)
+DOCKER_BUILDKIT=1 docker compose --profile agent-runtime up -d --build
 
-It adds `ollama` (local OpenAI-compatible model), a one-shot `ollama-pull`, and `runtime`
-(the generic Gargantua Runtime image with a demo bundle baked in — `examples/hello-agent`,
-a manifest + one `greeter-skill`). The runtime uses the `embedded` Spring profile
-(in-memory, no Mongo/Redis) and `semantic` ONNX routing (no LLM call needed just to route).
-
-Talk to the agent:
-
-```bash
 curl -X POST http://localhost:18100/api/agent/chat \
   -H 'Content-Type: application/json' -H 'X-User-Id: me' -H 'X-Session-Id: s1' \
   -d '{"message":"Hi, who are you?"}'
-# → {"text":"I'm ... running on the Gargantua Runtime ...","skillUsed":"greeter-skill",
-#    "routingMethod":"SEMANTIC","totalTokens":48,"dryRun":false}
+# → {"text":"... running on the Gargantua Runtime ...","skillUsed":"greeter-skill",...}
 ```
 
-List the loaded skills: `curl http://localhost:18100/api/admin/skills`.
+The runtime uses the `embedded` Spring profile (in-memory, no Mongo/Redis) and `semantic`
+ONNX routing (no LLM call needed just to route). `./smoke/smoke-runtime.sh` checks this
+whole loop. First CPU inference takes a few seconds; the tiny default model keeps it snappy.
 
-> The bundle is **baked into the image at build time**, not bind-mounted — a bind mount
-> of a workspace path can't work when the Docker daemon is remote (it resolves on the
-> daemon's host). To change the bundle, edit `examples/hello-agent/` and rebuild `runtime`.
-> First inference on CPU can take a few seconds; the tiny default model keeps it snappy.
+**Path B — create your own agent in the Studio and launch it:**
+
+1. Bring up the core stack, plus ollama and the runtime image (needed as the launch target):
+   ```bash
+   DOCKER_BUILDKIT=1 docker compose up -d --build --wait
+   DOCKER_BUILDKIT=1 docker compose --profile agent-runtime up -d ollama ollama-pull
+   DOCKER_BUILDKIT=1 docker compose --profile agent-runtime build runtime   # tags gargantua-runtime:local
+   ```
+2. In the Studio (`http://localhost:18081`): design an agent and a skill, then **Publish**.
+   For this local demo leave the model **blank** (or set it to your Ollama tag,
+   e.g. `qwen2.5:0.5b`) — a pinned cloud model like `gpt-4o` won't exist on Ollama.
+3. Click **Launch** on the manifest preview. The Studio backend runs the (editable) launch
+   command — a `docker run` of `gargantua-runtime:local` pointed at your published bundle.
+4. Test it: the Studio **Playground** (set the Runtime URL to `http://localhost:18100`),
+   the runtime's own chat UI at `http://localhost:18100/`, or curl as above. The
+   **Trace Explorer** shows the per-turn execution timeline from `/api/traces`.
+
+> **How Launch reaches Docker.** `studio-backend` runs the launch command against the Docker
+> daemon via `DOCKER_HOST` (Cave's remote socket-proxy) or a bind-mounted `/var/run/docker.sock`.
+> It joins the external `cave` network to reach that proxy. This runs a configured command
+> with the backend's privileges — **local-dev/demo only, never expose this backend.** The
+> command is fully editable (in the UI or via `GARGANTUA_LAUNCH_COMMAND_TEMPLATE`), so it can
+> become `kubectl` or anything else without a code change.
+>
+> On a **non-Cave** host (standard local Docker), remove the `cave` external network from
+> `docker-compose.yml` (and studio-backend's `cave` entry) and leave `DOCKER_HOST` unset so
+> the mounted `docker.sock` is used.
 
 ## Tear down
 

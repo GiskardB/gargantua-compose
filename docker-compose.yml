@@ -105,8 +105,30 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-gargantua}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gargantua}
       GARGANTUA_CONTROL_PLANE_BASE_URL: http://control-plane:8080
+      # The Launch button shells out to this. A plain `docker run` (not compose) so it works
+      # with a remote daemon — no compose file / build context needed in this container, only
+      # a pre-built gargantua-runtime:local image. {name}/{version} are substituted (validated).
+      GARGANTUA_LAUNCH_COMMAND_TEMPLATE: >-
+        docker rm -f gargantua-runtime 2>/dev/null;
+        docker run -d --name gargantua-runtime --network gargantua_default -p ${RUNTIME_PORT:-18100}:8080
+        -e GARGANTUA_BUNDLE_URL=http://control-plane:8080/api/v1/registry/bundles/{name}/{version}/bundle
+        -e SPRING_PROFILES_ACTIVE=embedded -e ROUTING_STRATEGY=semantic
+        -e LLM_PRIMARY_PROVIDER=openai -e LLM_PRIMARY_MODEL=${OLLAMA_MODEL:-qwen2.5:0.5b}
+        -e LLM_PRIMARY_ENDPOINT=http://ollama:11434/v1 -e LLM_PRIMARY_API_KEY=ollama
+        -e AGENT_WEB_CORS_ALLOWED_ORIGINS=http://localhost:${STUDIO_PORT:-18081}
+        gargantua-runtime:local
+      GARGANTUA_LAUNCH_WORKDIR: /app
+      # Reach the Docker daemon the same way Cave's shell does (remote TCP via socket-proxy);
+      # falls back to the mounted docker.sock on a standard local Docker install.
+      DOCKER_HOST: ${DOCKER_HOST:-unix:///var/run/docker.sock}
     ports:
       - "${STUDIO_BACKEND_PORT:-18090}:8090"
+    networks:
+      - default
+      - cave
+    volumes:
+      # Fallback for a local Docker daemon; ignored when DOCKER_HOST points at a remote one.
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy
@@ -170,32 +192,52 @@ services:
 
   runtime:
     profiles: ["agent-runtime"]
+    # Tagged so the Studio Launch button can `docker run` this exact image (it can't build
+    # from the studio-backend container against a remote daemon). Build it once with:
+    #   docker compose --profile agent-runtime build runtime
+    image: gargantua-runtime:local
     build:
-      # Build context is this repo (bakes ./examples/hello-agent into the image at build
-      # time — a bind mount can't work when the daemon is remote). The Runtime source is
-      # the `runtime_src` named context.
+      # The Runtime source is the `runtime_src` named context. No bundle is baked in anymore —
+      # the runtime FETCHES its bundle from the Control Plane via GARGANTUA_BUNDLE_URL.
       context: .
       dockerfile: runtime.Dockerfile
       additional_contexts:
         runtime_src: ../gargantua
     environment:
+      # Fetch the published bundle from the Control Plane (defaults to the seeded hello-agent).
+      GARGANTUA_BUNDLE_URL: http://control-plane:8080/api/v1/registry/bundles/${GARGANTUA_BUNDLE_NAME:-hello-agent}/${GARGANTUA_BUNDLE_VERSION:-1.0.0}/bundle
       SPRING_PROFILES_ACTIVE: embedded
       ROUTING_STRATEGY: semantic   # ONNX embeddings only — no LLM call needed to route
       LLM_PRIMARY_PROVIDER: openai # Ollama exposes an OpenAI-compatible /v1 endpoint
       LLM_PRIMARY_MODEL: ${OLLAMA_MODEL:-qwen2.5:0.5b}
       LLM_PRIMARY_ENDPOINT: http://ollama:11434/v1
       LLM_PRIMARY_API_KEY: ollama # unused by Ollama, but the client requires a non-empty value
+      AGENT_WEB_CORS_ALLOWED_ORIGINS: http://localhost:${STUDIO_PORT:-18081}
     ports:
       - "${RUNTIME_PORT:-18100}:8080"
+    # Retry until the bundle is published (the seed script / a Studio publish): a missing
+    # bundle exits the process, and on-failure brings it back once the bundle exists.
+    restart: on-failure
     depends_on:
       ollama-pull:
         condition: service_completed_successfully
+      control-plane:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/actuator/health/readiness || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 30
       start_period: 60s
+
+networks:
+  default:
+  # Cave's shared network, where socket-proxy (the Docker daemon endpoint) lives. External
+  # so studio-backend can reach it to run the Launch command. On a non-Cave host this network
+  # may not exist — remove this block and the studio-backend `cave` entry, and rely on the
+  # docker.sock mount instead.
+  cave:
+    external: true
 
 volumes:
   pgdata:
