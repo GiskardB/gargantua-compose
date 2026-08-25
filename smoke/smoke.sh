@@ -12,9 +12,10 @@
 # Run it after `docker compose up -d --wait`. No jq required.
 set -euo pipefail
 
+# Studio is now one image (SPA + BFF on the same origin), so SB and UI share a port.
 CP="${CONTROL_PLANE_URL:-http://localhost:18080}"
-SB="${STUDIO_BACKEND_URL:-http://localhost:18090}"
 UI="${STUDIO_URL:-http://localhost:18081}"
+SB="${STUDIO_BACKEND_URL:-$UI}"
 
 pass() { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 fail() { printf '  \033[31m✗\033[0m %s\n' "$1"; exit 1; }

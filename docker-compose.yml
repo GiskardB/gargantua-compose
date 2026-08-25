@@ -2,13 +2,12 @@
 #
 # Brings up the agent-creation flow end to end WITHOUT Kubernetes:
 #
-#   browser ─▶ studio (nginx SPA + /api proxy)
-#                 └─▶ studio-backend (BFF, builds gargantua.ai/v1 manifests)
-#                        └─▶ control-plane (Registry + Catalog)
-#                               ├─▶ postgres  (control-plane + studio state)
-#                               └─▶ minio     (bundle manifest blobs)
+#   browser ─▶ studio (ONE image: Spring serves the SPA at / and the BFF API at /api)
+#                 └─▶ control-plane (Registry + Catalog)
+#                        ├─▶ postgres  (control-plane + studio state)
+#                        └─▶ minio     (bundle manifest blobs)
 #
-# The core 5 services above are the "does Studio emit something compatible?" slice.
+# The core 4 services above are the "does Studio emit something compatible?" slice.
 # Optionally, the `agent-runtime` profile adds a second loop — actually RUNNING an
 # agent bundle, end to end, with a real (local, no external API key) LLM:
 #
@@ -93,9 +92,11 @@ services:
       retries: 30
       start_period: 60s
 
-  studio-backend:
+  # Studio = frontend + backend in ONE image (Spring serves the SPA at / and /api on the
+  # same origin — no separate nginx). Build context is the merged gargantua-studio repo.
+  studio:
     build:
-      context: ../gargantua-studio-backend
+      context: ../gargantua-studio
       additional_contexts:
         runtime_src: ../gargantua
     environment:
@@ -122,7 +123,7 @@ services:
       # falls back to the mounted docker.sock on a standard local Docker install.
       DOCKER_HOST: ${DOCKER_HOST:-unix:///var/run/docker.sock}
     ports:
-      - "${STUDIO_BACKEND_PORT:-18090}:8090"
+      - "${STUDIO_PORT:-18081}:8090"
     networks:
       - default
       - cave
@@ -140,26 +141,6 @@ services:
       timeout: 5s
       retries: 30
       start_period: 60s
-
-  studio:
-    build:
-      context: ../gargantua-studio
-      args:
-        # Empty = same-origin: the SPA calls /api and /actuator, nginx proxies them to
-        # studio-backend. Host-agnostic, so the site works on localhost or a LAN IP.
-        VITE_STUDIO_API: ""
-    ports:
-      - "${STUDIO_PORT:-18081}:80"
-    depends_on:
-      studio-backend:
-        condition: service_healthy
-    healthcheck:
-      # 127.0.0.1, not localhost: this nginx image only listens on IPv4 (no `listen [::]:80`
-      # in nginx.conf), and `localhost` resolves to ::1 first inside the container.
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/ || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
 
   # ── optional: `--profile agent-runtime` ──────────────────────────────────────
 
