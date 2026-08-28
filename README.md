@@ -8,8 +8,7 @@ up as a Docker Compose stack.
 browser ─▶ studio            nginx: serves the SPA, proxies /api same-origin
               └─▶ studio-backend   BFF: builds gargantua.ai/v1 manifests (agent-core)
                      └─▶ control-plane   Registry + Catalog
-                            ├─▶ postgres   control-plane + studio state
-                            └─▶ minio      bundle manifest blobs
+                            └─▶ postgres   control-plane + studio state + bundle blobs
 ```
 
 > **Scope.** Creating an agent only needs Studio → backend → Control Plane. *Running*
@@ -62,10 +61,9 @@ Then open the Studio:
 - **Studio UI**      → http://localhost:18081   (or `http://<CAVE_HOST>:18081`)
 - Studio backend     → http://localhost:18090/actuator/health
 - Control Plane      → http://localhost:18080/actuator/health
-- MinIO console      → http://localhost:19001   (minioadmin / minioadmin)
 
 > **Ports are in a high range on purpose** so they never clash with Cave's own services
-> (forgejo 3000, postgres 5432, redis 6379, cave-publish 7443, 8080, minio 9000/9001).
+> (forgejo 3000, postgres 5432, redis 6379, cave-publish 7443, 8080).
 > Change any of them in `.env`.
 >
 > **Published ports bind on the Docker *host***, which is not always `localhost` from
@@ -152,18 +150,18 @@ whole loop. First CPU inference takes a few seconds; the tiny default model keep
 
 ```bash
 docker compose down          # keep data   (Windows: stop.bat)
-docker compose down -v       # also drop Postgres + MinIO volumes   (Windows: stop.bat clean)
+docker compose down -v       # also drop Postgres volumes   (Windows: stop.bat clean)
 ```
 
 ## Notes
 
-- **Ports** default to a high range (`18080` CP, `18090` backend, `18081` Studio,
-  `19000/19001` MinIO) to avoid clashing with Cave; all overridable via `.env`
-  (`CONTROL_PLANE_PORT`, `STUDIO_BACKEND_PORT`, `STUDIO_PORT`, `MINIO_*_PORT`). Postgres
+- **Ports** default to a high range (`18080` CP, `18090` backend, `18081` Studio)
+  to avoid clashing with Cave; all overridable via `.env`
+  (`CONTROL_PLANE_PORT`, `STUDIO_BACKEND_PORT`, `STUDIO_PORT`). Postgres
   is intentionally **not** published, to avoid clashing with a host Postgres.
 - **`start.bat` / `stop.bat`** are the Windows convenience wrappers around
   `docker compose up`/`down`; the raw `docker compose` commands work everywhere.
-- **State** lives in the `pgdata` and `miniodata` named volumes. The Control Plane's
-  `S3BlobStore` creates the bucket on first publish; the JDBC schema is applied on boot.
-- **Profiles**: control-plane runs `postgres,minio`; studio-backend runs `postgres`.
-  Both fall back to embedded H2 + filesystem blobs when run outside this compose.
+- **State** lives in the `pgdata` named volume. The Control Plane's
+  `PostgresBlobStore` writes manifest + bundle bytes into the `cp_document` table alongside the JSON state.
+- **Profiles**: control-plane runs `postgres`; studio-backend runs `postgres`.
+  Both fall back to embedded H2 when run outside this compose.
