@@ -1,0 +1,23 @@
+# Cave's local dev/demo defaults for a launched runtime — baked into the
+# gargantua-runtime:local image at build/config/application-cave.yml and activated with
+# `SPRING_PROFILES_ACTIVE=embedded,cave`.
+#
+# The image's own defaults point at real, paid LLM providers (OpenAI/Anthropic) that need
+# an API key Cave doesn't have. This profile redirects everything to the `ollama` service
+# already running in this compose network instead, and opens CORS so the Studio Playground
+# can call the runtime from any origin (Cave serves Studio from whatever host reached it,
+# including a phone — see docker-compose.yml). Together with GARGANTUA_BUNDLE_URL, this is
+# what lets Studio's launch command carry nothing but the bundle name/version.
+agent:
+  llm:
+    primary:
+      provider: openai
+      model: qwen2.5:0.5b
+      endpoint: http://ollama:11434/v1
+      api-key: ollama
+  routing:
+    strategy: semantic
+  web:
+    cors:
+      allowed-origins:
+        - "*"

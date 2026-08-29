@@ -85,14 +85,14 @@ services:
       # The Launch button shells out to this. A plain `docker run` (not compose) so it works
       # with a remote daemon — no compose file / build context needed in this container, only
       # a pre-built gargantua-runtime:local image. {name}/{version} are substituted (validated).
+      # The `cave` profile (baked into the image, see runtime.Dockerfile/runtime-cave.yml)
+      # carries the local Ollama LLM routing and open CORS, so nothing but the bundle itself
+      # needs to be passed per launch.
       GARGANTUA_LAUNCH_COMMAND_TEMPLATE: >-
         docker rm -f gargantua-runtime 2>/dev/null;
         docker run -d --name gargantua-runtime --network gargantua_default -p ${RUNTIME_PORT:-18100}:8080
         -e GARGANTUA_BUNDLE_URL=http://control-plane:8080/api/v1/registry/bundles/{name}/{version}/bundle
-        -e SPRING_PROFILES_ACTIVE=embedded -e ROUTING_STRATEGY=semantic
-        -e LLM_PRIMARY_PROVIDER=openai -e LLM_PRIMARY_MODEL=${OLLAMA_MODEL:-qwen2.5:0.5b}
-        -e LLM_PRIMARY_ENDPOINT=http://ollama:11434/v1 -e LLM_PRIMARY_API_KEY=ollama
-        -e AGENT_WEB_CORS_ALLOWED_ORIGINS=*
+        -e SPRING_PROFILES_ACTIVE=embedded,cave
         gargantua-runtime:local
       GARGANTUA_LAUNCH_WORKDIR: /app
       # Reach the Docker daemon the same way Cave's shell does (remote TCP via socket-proxy);
@@ -163,15 +163,9 @@ services:
     environment:
       # Fetch the published bundle from the Control Plane (defaults to the seeded hello-agent).
       GARGANTUA_BUNDLE_URL: http://control-plane:8080/api/v1/registry/bundles/${GARGANTUA_BUNDLE_NAME:-hello-agent}/${GARGANTUA_BUNDLE_VERSION:-1.0.0}/bundle
-      SPRING_PROFILES_ACTIVE: embedded
-      ROUTING_STRATEGY: semantic   # ONNX embeddings only — no LLM call needed to route
-      LLM_PRIMARY_PROVIDER: openai # Ollama exposes an OpenAI-compatible /v1 endpoint
-      LLM_PRIMARY_MODEL: ${OLLAMA_MODEL:-qwen2.5:0.5b}
-      LLM_PRIMARY_ENDPOINT: http://ollama:11434/v1
-      LLM_PRIMARY_API_KEY: ollama # unused by Ollama, but the client requires a non-empty value
-      # Wildcard, not the Studio origin: Cave serves Studio from whatever host/LAN address the
-      # browser used (including a phone), which a single hardcoded origin can't match.
-      AGENT_WEB_CORS_ALLOWED_ORIGINS: "*"
+      # `cave` (baked into the image, see runtime.Dockerfile/runtime-cave.yml) carries the
+      # local Ollama LLM routing and open CORS — see that file for why they're needed.
+      SPRING_PROFILES_ACTIVE: embedded,cave
     ports:
       - "${RUNTIME_PORT:-18100}:8080"
     # Retry until the bundle is published (the seed script / a Studio publish): a missing

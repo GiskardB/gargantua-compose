@@ -22,6 +22,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 RUN groupadd --system gargantua && useradd --system --gid gargantua gargantua
 WORKDIR /app
 COPY --from=builder /src/agent-runtime/target/agent-runtime-*.jar /app/runtime.jar
+# Cave's local-dev LLM/CORS defaults, picked up automatically by Spring Boot from
+# ./config/application-{profile}.yml when `cave` is one of the active profiles — see
+# runtime-cave.yml for why. Keeps Studio's launch command down to the bundle URL.
+COPY runtime-cave.yml /app/config/application-cave.yml
 RUN chown -R gargantua:gargantua /app
 USER gargantua
 EXPOSE 8080
