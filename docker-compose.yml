@@ -89,10 +89,13 @@ services:
       # carries the local Ollama LLM routing and open CORS, so nothing but the bundle itself
       # needs to be passed per launch.
       # {env} is where Studio splices any -e KEY=VALUE overrides from the Launch dialog's
-      # environment variable form — must stay before the image name.
+      # environment variable form — must stay before the image name. {port} is allocated per
+      # agent name (LaunchService#allocatePort) and reused on relaunch, and the container name
+      # is per-agent too, so multiple agents can run concurrently instead of each launch
+      # replacing whatever was running before.
       GARGANTUA_LAUNCH_COMMAND_TEMPLATE: >-
-        docker rm -f gargantua-runtime 2>/dev/null;
-        docker run -d --name gargantua-runtime --network gargantua_default -p ${RUNTIME_PORT:-18100}:8080
+        docker rm -f gargantua-runtime-{name} 2>/dev/null;
+        docker run -d --name gargantua-runtime-{name} --network gargantua_default -p {port}:8080
         -e GARGANTUA_BUNDLE_URL=http://control-plane:8080/api/v1/registry/bundles/{name}/{version}/bundle
         -e SPRING_PROFILES_ACTIVE=embedded,cave
         {env}
