@@ -23,9 +23,8 @@ if errorlevel 1 (
 echo.
 echo [gargantua] Up. Open (default ports; change them in .env if needed):
 echo   Studio UI       http://localhost:18081
-echo   Studio backend  http://localhost:18090/actuator/health
+echo   Studio backend  http://localhost:18081/actuator/health
 echo   Control Plane   http://localhost:18080/actuator/health
-echo   MinIO console   http://localhost:19001   ^(minioadmin / minioadmin^)
 echo.
 echo [gargantua] Stop with stop.bat   ^(stop.bat clean also removes the data volumes^)
 endlocal

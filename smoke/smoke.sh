@@ -3,7 +3,7 @@
 #
 # Proves the agent-creation flow works across every hop:
 #   1. Control Plane and Studio backend are healthy.
-#   2. Studio (nginx) serves the SPA and proxies /api to the backend.
+#   2. Studio serves the SPA and the backend API from the same origin.
 #   3. The backend BUILDS a gargantua.ai/v1 manifest from a form draft (agent-core).
 #   4. The backend PUBLISHES it to the Control Plane Registry.
 #   5. The Control Plane CATALOG then exposes the derived capability
@@ -56,10 +56,10 @@ step "1. Health"
 curl -fsS "$CP/actuator/health"  | grep -q '"status":"UP"' && pass "control-plane UP"       || fail "control-plane not UP ($CP)"
 curl -fsS "$SB/actuator/health"  | grep -q '"status":"UP"' && pass "studio-backend UP"       || fail "studio-backend not UP ($SB)"
 
-step "2. Studio SPA + reverse proxy"
+step "2. Studio SPA + same-origin API"
 curl -fsS "$UI/" | grep -qi '<div id="root"' && pass "SPA served at $UI"                     || fail "SPA not served ($UI)"
-# The same-origin proxy: the browser reaches the backend through nginx.
-curl -fsS "$UI/actuator/health" | grep -q '"status":"UP"' && pass "nginx proxies /actuator → backend" || fail "nginx proxy broken"
+# Same origin: the browser reaches the backend on the port that served the SPA.
+curl -fsS "$UI/actuator/health" | grep -q '"status":"UP"' && pass "backend reachable on the SPA origin" || fail "backend not reachable on the SPA origin"
 
 step "3. Build manifest (form draft → gargantua.ai/v1 YAML)"
 BUILD=$(curl -fsS -X POST "$SB/api/studio/manifest/build" -H 'Content-Type: application/json' -d "$DRAFT")

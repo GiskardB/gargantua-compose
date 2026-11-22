@@ -5,10 +5,9 @@ This is the "does Studio emit something the rest of the platform accepts?" test,
 up as a Docker Compose stack.
 
 ```
-browser ─▶ studio            nginx: serves the SPA, proxies /api same-origin
-              └─▶ studio-backend   BFF: builds gargantua.ai/v1 manifests (agent-core)
-                     └─▶ control-plane   Registry + Catalog
-                            └─▶ postgres   control-plane + studio state + bundle blobs
+browser ─▶ studio            ONE image: Spring serves the SPA at / and the BFF API at /api
+              └─▶ control-plane   Registry + Catalog
+                     └─▶ postgres   control-plane + studio state + bundle blobs
 ```
 
 > **Scope.** Creating an agent only needs Studio → backend → Control Plane. *Running*
@@ -59,7 +58,7 @@ volumes).
 Then open the Studio:
 
 - **Studio UI**      → http://localhost:18081   (or `http://<CAVE_HOST>:18081`)
-- Studio backend     → http://localhost:18090/actuator/health
+- Studio backend     → http://localhost:18081/actuator/health   (same port: one image serves both)
 - Control Plane      → http://localhost:18080/actuator/health
 
 > **Ports are in a high range on purpose** so they never clash with Cave's own services
@@ -73,7 +72,7 @@ Then open the Studio:
 > healthy (`docker compose ps`), try the actual Docker host address instead (in Cave,
 > `<CAVE_HOST>`).
 
-The SPA talks to the backend **same-origin** through nginx, so the UI works whether you
+The SPA and its backend are the **same origin** (one Spring process serves both), so the UI works whether you
 reach it on `localhost` or a LAN IP — no rebuild per host, no CORS.
 
 ## Verify the flow
@@ -155,9 +154,9 @@ docker compose down -v       # also drop Postgres volumes   (Windows: stop.bat c
 
 ## Notes
 
-- **Ports** default to a high range (`18080` CP, `18090` backend, `18081` Studio)
+- **Ports** default to a high range (`18080` CP, `18081` Studio UI + backend)
   to avoid clashing with Cave; all overridable via `.env`
-  (`CONTROL_PLANE_PORT`, `STUDIO_BACKEND_PORT`, `STUDIO_PORT`). Postgres
+  (`CONTROL_PLANE_PORT`, `STUDIO_PORT`). Postgres
   is intentionally **not** published, to avoid clashing with a host Postgres.
 - **`start.bat` / `stop.bat`** are the Windows convenience wrappers around
   `docker compose up`/`down`; the raw `docker compose` commands work everywhere.

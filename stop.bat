@@ -9,7 +9,7 @@ if errorlevel 1 (
 )
 
 if /i "%~1"=="clean" (
-  echo [gargantua] Stopping and removing volumes - Postgres and MinIO data will be lost...
+  echo [gargantua] Stopping and removing volumes - Postgres data will be lost...
   docker compose down -v
 ) else (
   echo [gargantua] Stopping. Data is kept in volumes; run "stop.bat clean" to wipe it.
