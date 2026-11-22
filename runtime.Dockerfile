@@ -12,7 +12,11 @@
 FROM maven:3.9-eclipse-temurin-25-alpine AS builder
 WORKDIR /src
 COPY --from=runtime_src . .
-RUN mvn -q -pl agent-core,agent-memory-sdk,agent-mcp-client,agent-bundle,agent-engine,agent-runtime \
+# The Maven repository is a BuildKit cache mount: it survives across builds without being
+# baked into a layer, so a source change recompiles instead of re-downloading every
+# dependency. Nothing later in the build reads it — the jar lands in /src, in the layer.
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn -q -pl agent-core,agent-memory-sdk,agent-mcp-client,agent-bundle,agent-engine,agent-runtime \
         -am package -DskipTests
 
 # 2) Train a CDS archive: every agent boots the same jar (only the fetched bundle differs),
