@@ -158,6 +158,13 @@ docker compose down -v       # also drop Postgres volumes   (Windows: stop.bat c
   to avoid clashing with Cave; all overridable via `.env`
   (`CONTROL_PLANE_PORT`, `STUDIO_PORT`). Postgres
   is intentionally **not** published, to avoid clashing with a host Postgres.
+- **Studio's API is reachable only same-origin and from loopback origins.** That is all
+  this stack needs. If you front the SPA from another origin, set
+  `GARGANTUA_CORS_ALLOWED_ORIGIN_PATTERNS` on the `studio` service.
+- **The Control Plane does not launch runtimes here.** Its own launch endpoint is opt-in
+  (`gargantua.launch.enabled`) and left off: Studio runs the launch and reports the result.
+- **Rebuilding the runtime image reuses a Maven cache** (a BuildKit cache mount in
+  `runtime.Dockerfile`), so a source change recompiles without re-downloading dependencies.
 - **`start.bat` / `stop.bat`** are the Windows convenience wrappers around
   `docker compose up`/`down`; the raw `docker compose` commands work everywhere.
 - **State** lives in the `pgdata` named volume. The Control Plane's
