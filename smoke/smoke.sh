@@ -17,6 +17,11 @@ CP="${CONTROL_PLANE_URL:-http://localhost:18080}"
 UI="${STUDIO_URL:-http://localhost:18081}"
 SB="${STUDIO_BACKEND_URL:-$UI}"
 
+# When the Control Plane requires a token, the direct calls below need it too
+# (calls through Studio do not: Studio holds its own). Load .env or export it first.
+CP_AUTH=()
+[ -n "${CONTROL_PLANE_ADMIN_TOKEN:-}" ] && CP_AUTH=(-H "Authorization: Bearer ${CONTROL_PLANE_ADMIN_TOKEN}")
+
 pass() { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 fail() { printf '  \033[31m✗\033[0m %s\n' "$1"; exit 1; }
 step() { printf '\n\033[1m%s\033[0m\n' "$1"; }
@@ -80,7 +85,7 @@ CAPS=$(curl -fsS "$SB/api/studio/capabilities")
 echo "$CAPS" | grep -q 'smoke-capability' && pass "capability visible in Catalog via backend" \
   || fail "capability not found in catalog: $CAPS"
 # And directly on the Control Plane, to prove it is CP state, not a backend echo.
-curl -fsS "$CP/api/v1/catalog/capabilities" | grep -q 'smoke-capability' \
+curl -fsS ${CP_AUTH[@]+"${CP_AUTH[@]}"} "$CP/api/v1/catalog/capabilities" | grep -q 'smoke-capability' \
   && pass "capability present in Control Plane Catalog" || fail "not in CP catalog"
 
 printf '\n\033[32m✔ vertical slice OK — Studio output is compatible with the Control Plane\033[0m\n'

@@ -161,6 +161,11 @@ docker compose down -v       # also drop Postgres volumes   (Windows: stop.bat c
 - **Studio's API is reachable only same-origin and from loopback origins.** That is all
   this stack needs. If you front the SPA from another origin, set
   `GARGANTUA_CORS_ALLOWED_ORIGIN_PATTERNS` on the `studio` service.
+- **The Control Plane API is open by default** — acceptable on your own machine, not
+  on a shared host. Set `CONTROL_PLANE_ADMIN_TOKEN` and `CONTROL_PLANE_READER_TOKEN` in
+  `.env` to require a bearer token: compose hands the admin token to Studio and the reader
+  token to every runtime it launches. `smoke.sh` and the seed script pick the admin token
+  up from the environment (`set -a; . ./.env; set +a`).
 - **The Control Plane does not launch runtimes here.** Its own launch endpoint is opt-in
   (`gargantua.launch.enabled`) and left off: Studio runs the launch and reports the result.
 - **Rebuilding the runtime image reuses a Maven cache** (a BuildKit cache mount in

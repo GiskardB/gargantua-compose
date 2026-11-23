@@ -15,6 +15,10 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 MANIFEST="$HERE/examples/hello-agent/manifest.yaml"
 SKILL="$HERE/examples/hello-agent/skills/greeter-skill/SKILL.md"
 
+# Publishing needs the admin token when the Control Plane requires one.
+CP_AUTH=()
+[ -n "${CONTROL_PLANE_ADMIN_TOKEN:-}" ] && CP_AUTH=(-H "Authorization: Bearer ${CONTROL_PLANE_ADMIN_TOKEN}")
+
 pass() { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 fail() { printf '  \033[31m✗\033[0m %s\n' "$1"; exit 1; }
 
@@ -31,7 +35,7 @@ PY
 )
 
 CODE=$(curl -s -o /tmp/gargantua-seed.json -w '%{http_code}' \
-  -X POST "$CP/api/v1/registry/bundles" \
+  ${CP_AUTH[@]+"${CP_AUTH[@]}"} -X POST "$CP/api/v1/registry/bundles" \
   -H 'Content-Type: application/json' -d "$BODY")
 
 case "$CODE" in
@@ -41,7 +45,7 @@ case "$CODE" in
 esac
 
 # Prove the runnable bundle zip is retrievable (what the runtime downloads).
-ZCODE=$(curl -s -o /dev/null -w '%{http_code}' \
+ZCODE=$(curl -s -o /dev/null -w '%{http_code}' ${CP_AUTH[@]+"${CP_AUTH[@]}"} \
   "$CP/api/v1/registry/bundles/hello-agent/1.0.0/bundle")
 [ "$ZCODE" = "200" ] && pass "bundle zip downloadable at /bundles/hello-agent/1.0.0/bundle" \
   || fail "bundle zip not retrievable (HTTP $ZCODE)"

@@ -55,6 +55,10 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-gargantua}
       POSTGRES_USER: ${POSTGRES_USER:-gargantua}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gargantua}
+      # API authentication. Both empty (the default) leaves the Control Plane open, which
+      # is fine for a laptop demo; set them in .env before exposing the port to anyone.
+      GARGANTUA_SECURITY_ADMIN_TOKENS: ${CONTROL_PLANE_ADMIN_TOKEN:-}
+      GARGANTUA_SECURITY_READER_TOKENS: ${CONTROL_PLANE_READER_TOKEN:-}
     ports:
       # Published high to avoid clashing with Cave's service on 8080.
       - "${CONTROL_PLANE_PORT:-18080}:8080"
@@ -82,6 +86,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-gargantua}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gargantua}
       GARGANTUA_CONTROL_PLANE_BASE_URL: http://control-plane:8080
+      # Studio publishes, so it needs the admin token (empty = Control Plane is open).
+      GARGANTUA_CONTROL_PLANE_TOKEN: ${CONTROL_PLANE_ADMIN_TOKEN:-}
       # The Launch button shells out to this. A plain `docker run` (not compose) so it works
       # with a remote daemon — no compose file / build context needed in this container, only
       # a pre-built gargantua-runtime:local image. {name}/{version} are substituted (validated).
@@ -97,6 +103,7 @@ services:
         docker rm -f gargantua-runtime-{name} 2>/dev/null;
         docker run -d --name gargantua-runtime-{name} --network gargantua_default -p {port}:8080
         -e GARGANTUA_BUNDLE_URL=http://control-plane:8080/api/v1/registry/bundles/{name}/{version}/bundle
+        -e GARGANTUA_BUNDLE_TOKEN=${CONTROL_PLANE_READER_TOKEN:-}
         -e SPRING_PROFILES_ACTIVE=embedded,cave
         {env}
         gargantua-runtime:local
@@ -172,6 +179,8 @@ services:
       # `cave` (baked into the image, see runtime.Dockerfile/runtime-cave.yml) carries the
       # local Ollama LLM routing and open CORS — see that file for why they're needed.
       SPRING_PROFILES_ACTIVE: embedded,cave
+      # Only needs to read its bundle, so the reader token is enough.
+      GARGANTUA_BUNDLE_TOKEN: ${CONTROL_PLANE_READER_TOKEN:-}
     ports:
       - "${RUNTIME_PORT:-18100}:8080"
     # Retry until the bundle is published (the seed script / a Studio publish): a missing
